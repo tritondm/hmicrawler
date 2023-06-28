@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+# coding: utf8
+# 2023.05.12 - by andreas.kraxner@hblfa-tirol.at
+
+import requests
+#disable warning by change settings in the urllib3
+requests.packages.urllib3.disable_warnings()
+import re
+import argparse
+import os
+import datetime
+import json
+from urllib.parse import quote
+
+username='#### your username #####'
+passwd='#### your password ####'
+snitoken='#### the hmi token ####'
+
+cmd_getstorage='/StorageCardSD?UP=TRUE&FORCEBROWSE'
+cmd_delstorage='?DELETE&UP=TRUE&SingleUseToken='
+store_bef='/StorageCardSD/'
+store_after='?UP=TRUE&FORCEBROWSE'
+
+datum = datetime.datetime.now()
+
+#get htmldata from storagecard
+def get_data(url, dest, backup):
+    siteurl=url
+    storage=dest
+    session = requests.Session()
+    session.post(siteurl + '/FormLogin', data={'Login': username, 'Password': passwd, 'Token': snitoken}, verify=False)
+    #regex_find_json=re.compile('\d{8}_[A-Z]{2}\d{1}_\d{12}.json')
+    regex_find_json=re.compile('(\d{8}_[A-Z]{2}\d{1}_\d{12}.json)|(\d{8}_\d{8}_[A-Z]{2}\d{1}_\d{12}.json)')
+    regex_find_warnungcsv=re.compile('\w{15}_\w{2}\d{1}_\d{1}.csv')
+    regex_find_backupfiles=re.compile('PTRCP_\w{13,23}_\d{1}.\w{3}')
+    regex_find_token=re.compile(r'encodeURIComponent\(\"(.*?)\"\);')
+    htmllist=session.get(siteurl + cmd_getstorage)
+    if backup:
+        if not os.path.exists(storage + 'backup'):
+            os.mkdir(storage + 'backup')
+        print("write backup")
+    #print(htmllist.text)
+    jsonlist=[]
+    alarmcsv=[]
+    backuplist=[]
+    for line in htmllist:
+        itemf=re.findall(regex_find_json, line.decode('utf-8', 'ignore'))
+        itemfa = re.findall(regex_find_warnungcsv, line.decode('utf-8', 'ignore'))
+        itemfbackup = re.findall(regex_find_backupfiles, line.decode('utf-8', 'ignore'))
+        if re.findall(regex_find_token, line.decode('utf-8', 'ignore')):
+            singleusetoken = re.findall(regex_find_token, line.decode('utf-8', 'ignore'))
+        #create json list
+        if len(itemf) > 0:
+            if itemf[0] not in jsonlist:
+                jsonlist.append(str(itemf[0]))
+        if len(itemfa) > 0:
+            if itemfa[0] not in alarmcsv:
+                alarmcsv.append(str(itemfa[0]))
+        if backup:
+            if len(itemfbackup) > 0:
+                if itemfbackup[0] not in backuplist:
+                    backuplist.append(str(itemfbackup[0]))
+    #get the jsonfiles
+    for json in jsonlist:
+        jdata=session.get(siteurl + store_bef + json + store_after)
+        with open(storage + json, 'wb') as f:
+            f.write(jdata.content)
+        f.close()
+        print(storage + json)
+        if checkjson(storage + json):
+            print("json file  " + json + " is ok delete the file on remote site")
+            try:
+                session.get(siteurl + store_bef + json + cmd_delstorage + quote(singleusetoken[0]))
+            except:
+                print("error cannot delete file on remote site")
+        else:
+            print("json file  " + json + " is NOK wait for close statement")
+
+    for csv in alarmcsv:
+        csvdata=session.get(siteurl + store_bef + csv + store_after)
+        with open(storage + csv, 'wb') as f:
+            f.write(csvdata.content)
+        f.close()
+    if backup:
+        for bkp in backuplist:
+            backupdata=session.get(siteurl + store_bef + bkp + store_after)
+            with open(storage + 'backup/' + datum.strftime("%w") + bkp, 'wb') as f:
+                f.write(backupdata.content)
+            f.close()
+
+def checkjson(filename):
+    try:
+        with open(filename, encoding='ISO-8859-1') as f:
+            return json.load(f)
+    except ValueError as e:
+        print('invalid json: %s' % e)
+        return None
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--url', dest='url', required=True,
+                    help="url example: http://192.168.1.200:6664")
+    parser.add_argument('--dest', dest='dest', required=True,
+                    help="destination path example: /tmp/kp1/")
+    parser.add_argument('--backup',  action='store_true',
+                    help="Saves all Receipes to filesystem - destination/backup/")
+    args = parser.parse_args()
+    get_data(str(args.url), str(args.dest), args.backup)
+
+if __name__ == "__main__":
+    main()
+
