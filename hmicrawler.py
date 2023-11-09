@@ -3,6 +3,7 @@
 # 2023.05.12 - by andreas.kraxner@hblfa-tirol.at
 
 import requests
+
 #disable warning by change settings in the urllib3
 requests.packages.urllib3.disable_warnings()
 import re
@@ -12,9 +13,7 @@ import datetime
 import json
 from urllib.parse import quote
 
-username='#### your username #####'
-passwd='#### your password ####'
-snitoken='#### the hmi token ####'
+snitoken='%=Token'
 
 cmd_getstorage='/StorageCardSD?UP=TRUE&FORCEBROWSE'
 cmd_delstorage='?DELETE&UP=TRUE&SingleUseToken='
@@ -23,14 +22,17 @@ store_after='?UP=TRUE&FORCEBROWSE'
 
 datum = datetime.datetime.now()
 
-#get htmldata from storagecard
-def get_data(url, dest, backup):
+#get storage card
+def get_data(url, dest, backup, presse, username, passwd):
     siteurl=url
     storage=dest
     session = requests.Session()
     session.post(siteurl + '/FormLogin', data={'Login': username, 'Password': passwd, 'Token': snitoken}, verify=False)
-    #regex_find_json=re.compile('\d{8}_[A-Z]{2}\d{1}_\d{12}.json')
-    regex_find_json=re.compile('(\d{8}_[A-Z]{2}\d{1}_\d{12}.json)|(\d{8}_\d{8}_[A-Z]{2}\d{1}_\d{12}.json)')
+    if presse:
+        regex_find_json = re.compile('\d{8}_\d{8}_[A-Z]{2}\d{1}_\d{12}.json')
+    else:
+        regex_find_json = re.compile('\d{8}_[A-Z]{2}\d{1}_\d{12}.json')
+
     regex_find_warnungcsv=re.compile('\w{15}_\w{2}\d{1}_\d{1}.csv')
     regex_find_backupfiles=re.compile('PTRCP_\w{13,23}_\d{1}.\w{3}')
     regex_find_token=re.compile(r'encodeURIComponent\(\"(.*?)\"\);')
@@ -44,7 +46,7 @@ def get_data(url, dest, backup):
     alarmcsv=[]
     backuplist=[]
     for line in htmllist:
-        itemf=re.findall(regex_find_json, line.decode('utf-8', 'ignore'))
+        itemf = re.findall(regex_find_json, line.decode('utf-8', 'ignore'))
         itemfa = re.findall(regex_find_warnungcsv, line.decode('utf-8', 'ignore'))
         itemfbackup = re.findall(regex_find_backupfiles, line.decode('utf-8', 'ignore'))
         if re.findall(regex_find_token, line.decode('utf-8', 'ignore')):
@@ -62,27 +64,35 @@ def get_data(url, dest, backup):
                     backuplist.append(str(itemfbackup[0]))
     #get the jsonfiles
     for json in jsonlist:
+        #print(json)
         jdata=session.get(siteurl + store_bef + json + store_after)
         with open(storage + json, 'wb') as f:
             f.write(jdata.content)
         f.close()
         print(storage + json)
         if checkjson(storage + json):
-            print("json file  " + json + " is ok delete the file on remote site")
             try:
+                print("json file  " + json + " is ok delete the file on remote site with token \n" + quote(singleusetoken[0]))
                 session.get(siteurl + store_bef + json + cmd_delstorage + quote(singleusetoken[0]))
+                #update get the token
+                htmllistn = session.get(siteurl + cmd_getstorage)
+                for linen in htmllistn:
+                    if re.findall(regex_find_token, linen.decode('utf-8', 'ignore')):
+                        singleusetoken = re.findall(regex_find_token, linen.decode('utf-8', 'ignore'))
             except:
-                print("error cannot delete file on remote site")
+                print("error cannot delete file on remote site\n")
         else:
-            print("json file  " + json + " is NOK wait for close statement")
+            print("json file  " + json + " is NOK wait for close statement\n")
 
     for csv in alarmcsv:
+        #print(json)
         csvdata=session.get(siteurl + store_bef + csv + store_after)
         with open(storage + csv, 'wb') as f:
             f.write(csvdata.content)
         f.close()
     if backup:
         for bkp in backuplist:
+            #print(json)
             backupdata=session.get(siteurl + store_bef + bkp + store_after)
             with open(storage + 'backup/' + datum.strftime("%w") + bkp, 'wb') as f:
                 f.write(backupdata.content)
@@ -102,10 +112,17 @@ def main():
                     help="url example: http://192.168.1.200:6664")
     parser.add_argument('--dest', dest='dest', required=True,
                     help="destination path example: /tmp/kp1/")
+    parser.add_argument('--user', dest='username', required=True,
+                    help="Username of HMI")
+    parser.add_argument('--password', dest='password', required=True,
+                    help="Username of HMI")
     parser.add_argument('--backup',  action='store_true',
                     help="Saves all Receipes to filesystem - destination/backup/")
+    parser.add_argument('--presse',  action='store_true',
+                    help="only for Presse")
     args = parser.parse_args()
-    get_data(str(args.url), str(args.dest), args.backup)
+    get_data(str(args.url), str(args.dest), args.backup, args.presse, args.username, args.password)
+
 
 if __name__ == "__main__":
     main()
