@@ -24,7 +24,7 @@ from urllib.parse import quote
 __author__ = "Andreas Kraxner"
 __copyright__ = "Copyright 2023, tritondm"
 __credits__ = [" Andreas Kraxner"]
-__license__ = "GPLv3"
+__license__ = "MIT"
 __version__ = "1.0.1"
 __maintainer__ = "Andreas Kraxner"
 __email__ = "andreas.kraxner@hblfa-tirol.at"
