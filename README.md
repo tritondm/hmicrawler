@@ -9,5 +9,9 @@ the Warnings and Errorlogs are stored in [AlarmeWarnungen]_[MachineName]_[Nr].cs
 the Configfiles are downloadable by using the backup argument  
 example:  
 ```
-    python3 hmicrawler.py --url 'https://192.168.10.200:443' --dest '/tmp/fish' --backup --user '#youruser#' --password '#mypwd#'
+    hmicrawler.exe --url 'https://192.168.10.200:443' --dest '/tmp/fish' --backup --user '#youruser#' --password '#mypwd#'
+```
+compiled by pyinstaller
+```
+	pyinstaller --hidden-import requests --onefile hmicrawler.py
 ```
